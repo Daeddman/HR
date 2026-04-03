@@ -71,15 +71,16 @@ COMET_ABI = [
     },
 ]
 
-# Supply(address indexed from, address indexed dst, uint256 amount)
-SUPPLY_EVENT_SIG = "0xd6d480d5b3068db003533b170d67561494d72e3bf9fa40a266471351ebba9e16a"
-# Withdraw(address indexed src, address indexed to, uint256 amount)
+# keccak256("Supply(address,address,uint256)")
+SUPPLY_EVENT_SIG = "0xd1cf3d156d5f8f0d50f6c122ed609cec09d35c9b9fb3fff6ea0959134dae424e"
+# keccak256("Withdraw(address,address,uint256)")
 WITHDRAW_EVENT_SIG = "0x9b1bfa7fa9ee420a16e124f794c35ac9f90472acc99140eb2f6447c714cad8eb"
-# AbsorbCollateral(address indexed absorber, address indexed borrower, ...)
+# keccak256("AbsorbCollateral(address,address,address,uint256,uint256)")
 ABSORB_EVENT_SIG = "0xe52a667f71ec761b9b381c7b76ca9b852adf7e8905da0e0ad49986a0a6871815"
 
 DEPLOYMENTS = {
     "Arbitrum": {
+        # Compound v3 USDC Comet on Arbitrum
         "comet": "0x9c4ec768c28520B50860ea7a15bd7213a9fF58bf",
         "chain": "Arbitrum",
         "explorer": "https://arbiscan.io/address/{}",
@@ -87,7 +88,8 @@ DEPLOYMENTS = {
         "liquidation_bonus": 8.0,
     },
     "Base": {
-        "comet": "0xb125E6687d4313864e53df431d5425969c15Eb2",
+        # Compound v3 USDbC Comet on Base — verify address on https://basescan.org
+        "comet": "0xb125E6687d4313864e53df431d5425969c15Eb2c",
         "chain": "Base",
         "explorer": "https://basescan.org/address/{}",
         "base_token_decimals": 6,  # USDC
