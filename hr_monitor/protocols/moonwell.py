@@ -16,6 +16,7 @@ from web3 import AsyncWeb3
 from hr_monitor.config import config
 from hr_monitor.protocols.base_protocol import BaseProtocol, LiquidatablePosition
 from hr_monitor.utils.logger import setup_logger
+from hr_monitor.utils.logs import get_logs_chunked
 
 logger = setup_logger(__name__)
 
@@ -79,13 +80,14 @@ class MoonwellProtocol(BaseProtocol):
 
             for market_addr in markets:
                 try:
-                    logs = await self.w3.eth.get_logs(
+                    logs = await get_logs_chunked(
+                        self.w3,
                         {
                             "address": AsyncWeb3.to_checksum_address(market_addr),
                             "topics": [BORROW_EVENT_SIG],
                             "fromBlock": from_block,
                             "toBlock": latest,
-                        }
+                        },
                     )
                     for log in logs:
                         if log.get("data") and len(log["data"]) >= 66:

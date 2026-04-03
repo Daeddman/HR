@@ -30,5 +30,8 @@ class Config:
     # Maximum number of past blocks to scan for borrower events on startup
     MAX_BLOCKS_SCAN: int = int(os.getenv("MAX_BLOCKS_SCAN", "50000"))
 
+    # Maximum block range per single eth_getLogs request (prevents 413 errors on public RPCs)
+    LOG_CHUNK_SIZE: int = int(os.getenv("LOG_CHUNK_SIZE", "2000"))
+
 
 config = Config()

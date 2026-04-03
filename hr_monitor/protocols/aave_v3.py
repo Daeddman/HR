@@ -14,6 +14,7 @@ from web3 import AsyncWeb3
 from hr_monitor.config import config
 from hr_monitor.protocols.base_protocol import BaseProtocol, LiquidatablePosition
 from hr_monitor.utils.logger import setup_logger
+from hr_monitor.utils.logs import get_logs_chunked
 
 logger = setup_logger(__name__)
 
@@ -97,13 +98,14 @@ class AaveV3Protocol(BaseProtocol):
         try:
             latest = await self.w3.eth.block_number
             from_block = max(0, latest - config.MAX_BLOCKS_SCAN)
-            logs = await self.w3.eth.get_logs(
+            logs = await get_logs_chunked(
+                self.w3,
                 {
                     "address": self.pool_address,
                     "topics": [BORROW_EVENT_SIG],
                     "fromBlock": from_block,
                     "toBlock": latest,
-                }
+                },
             )
             # topic[2] = onBehalfOf (indexed), topic[1] = reserve, data contains user
             borrowers: set = set()

@@ -14,6 +14,7 @@ from web3 import AsyncWeb3
 from hr_monitor.config import config
 from hr_monitor.protocols.base_protocol import BaseProtocol, LiquidatablePosition
 from hr_monitor.utils.logger import setup_logger
+from hr_monitor.utils.logs import get_logs_chunked
 
 logger = setup_logger(__name__)
 
@@ -115,13 +116,14 @@ class CompoundV3Protocol(BaseProtocol):
             latest = await self.w3.eth.block_number
             from_block = max(0, latest - config.MAX_BLOCKS_SCAN)
             # Collect addresses from Supply and Withdraw events
-            supply_logs = await self.w3.eth.get_logs(
+            supply_logs = await get_logs_chunked(
+                self.w3,
                 {
                     "address": self.comet_address,
                     "topics": [SUPPLY_EVENT_SIG],
                     "fromBlock": from_block,
                     "toBlock": latest,
-                }
+                },
             )
             borrowers: set = set()
             for log in supply_logs:
