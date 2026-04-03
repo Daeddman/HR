@@ -12,3 +12,7 @@ def get_bsc_w3() -> AsyncWeb3:
 
 def get_base_w3() -> AsyncWeb3:
     return AsyncWeb3(AsyncHTTPProvider(config.BASE_RPC))
+
+
+def get_core_w3() -> AsyncWeb3:
+    return AsyncWeb3(AsyncHTTPProvider(config.CORE_RPC))

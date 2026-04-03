@@ -13,6 +13,7 @@ class Config:
     ARB_RPC: str = os.getenv("ARB_RPC", "https://arb1.arbitrum.io/rpc")
     BSC_RPC: str = os.getenv("BSC_RPC", "https://bsc-dataseed.binance.org/")
     BASE_RPC: str = os.getenv("BASE_RPC", "https://mainnet.base.org")
+    CORE_RPC: str = os.getenv("CORE_RPC", "https://rpc.coredao.org/")
 
     # Health Factor thresholds
     HF_ALERT_THRESHOLD: float = float(os.getenv("HF_ALERT_THRESHOLD", "1.05"))

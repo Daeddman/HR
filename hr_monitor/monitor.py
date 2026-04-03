@@ -9,10 +9,11 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from hr_monitor.chains.rpc import get_arb_w3, get_base_w3, get_bsc_w3
+from hr_monitor.chains.rpc import get_arb_w3, get_base_w3, get_bsc_w3, get_core_w3
 from hr_monitor.config import config
 from hr_monitor.protocols.aave_v3 import AaveV3Protocol
 from hr_monitor.protocols.base_protocol import LiquidatablePosition
+from hr_monitor.protocols.colend import ColendProtocol
 from hr_monitor.protocols.compound_v3 import CompoundV3Protocol
 from hr_monitor.protocols.moonwell import MoonwellProtocol
 from hr_monitor.protocols.radiant import RadiantProtocol
@@ -29,6 +30,7 @@ class MonitoringManager:
         self._arb_w3 = get_arb_w3()
         self._bsc_w3 = get_bsc_w3()
         self._base_w3 = get_base_w3()
+        self._core_w3 = get_core_w3()
 
         # Protocol instances
         self._protocols = [
@@ -40,6 +42,7 @@ class MonitoringManager:
             VenusProtocol(self._bsc_w3),
             SeamlessProtocol(self._base_w3),
             MoonwellProtocol(self._base_w3),
+            ColendProtocol(self._core_w3),
         ]
 
         # Deduplication: address -> last alert datetime (UTC)
