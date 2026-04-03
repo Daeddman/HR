@@ -8,6 +8,7 @@ def setup_logger(name: str = "hr_monitor", level: int = logging.INFO) -> logging
         return logger
 
     logger.setLevel(level)
+    logger.propagate = False
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(level)
