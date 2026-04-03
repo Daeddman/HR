@@ -48,6 +48,10 @@ cp .env.example .env
 | `MIN_POSITION_USD` | Минимальный долг позиции (USD) | `1000` |
 | `ALERT_COOLDOWN_MINUTES` | Кулдаун повторных уведомлений (мин) | `10` |
 | `MAX_BLOCKS_SCAN` | Блоков для поиска заёмщиков при старте | `50000` |
+| `LOG_CHUNK_SIZE` | Блоков в одном запросе `eth_getLogs` (против 413) | `2000` |
+| `LOG_CHUNK_DELAY` | Пауза (сек) между чанками `eth_getLogs` (против 429) | `0.2` |
+| `LOG_MAX_RETRIES` | Повторных попыток при ошибке 429 | `5` |
+| `LOG_RETRY_BASE_DELAY` | Базовая задержка backoff при 429 (сек) | `2.0` |
 
 ---
 

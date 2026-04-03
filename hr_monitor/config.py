@@ -33,5 +33,12 @@ class Config:
     # Maximum block range per single eth_getLogs request (prevents 413 errors on public RPCs)
     LOG_CHUNK_SIZE: int = int(os.getenv("LOG_CHUNK_SIZE", "2000"))
 
+    # Seconds to sleep between consecutive eth_getLogs chunks (reduces 429 on public RPCs)
+    LOG_CHUNK_DELAY: float = float(os.getenv("LOG_CHUNK_DELAY", "0.2"))
+
+    # Retry settings for eth_getLogs when the RPC returns 429 Too Many Requests
+    LOG_MAX_RETRIES: int = int(os.getenv("LOG_MAX_RETRIES", "5"))
+    LOG_RETRY_BASE_DELAY: float = float(os.getenv("LOG_RETRY_BASE_DELAY", "2.0"))
+
 
 config = Config()
