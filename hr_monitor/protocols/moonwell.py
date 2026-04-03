@@ -6,6 +6,8 @@ Comptroller: 0xfBb21d0380beE3312B33c4353c8936a0F13EF26C
 
 getAccountLiquidity(address) returns (error, liquidity, shortfall).
 shortfall > 0 means the position can be liquidated.
+For near-liquidation detection (shortfall == 0) we compute the full HF
+using per-market oracle prices.
 """
 
 import asyncio
@@ -47,6 +49,42 @@ COMPTROLLER_ABI = [
         "inputs": [],
         "outputs": [{"name": "", "type": "address[]"}],
     },
+    {
+        "name": "getAssetsIn",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [{"name": "account", "type": "address"}],
+        "outputs": [{"name": "", "type": "address[]"}],
+    },
+    {
+        "name": "oracle",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [{"name": "", "type": "address"}],
+    },
+]
+
+# Minimal mToken ABI — borrowBalanceStored returns balance in underlying base units.
+MTOKEN_ABI = [
+    {
+        "name": "borrowBalanceStored",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [{"name": "account", "type": "address"}],
+        "outputs": [{"name": "", "type": "uint256"}],
+    }
+]
+
+# Oracle ABI — getUnderlyingPrice returns price * 10^(36 - underlyingDecimals)
+ORACLE_ABI = [
+    {
+        "name": "getUnderlyingPrice",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [{"name": "cToken", "type": "address"}],
+        "outputs": [{"name": "", "type": "uint256"}],
+    }
 ]
 
 WEI = 10 ** 18
@@ -61,6 +99,7 @@ class MoonwellProtocol(BaseProtocol):
         )
         self._borrowers: List[str] = []
         self._markets: List[str] = []
+        self._oracle_contract = None
 
     async def _get_markets(self) -> List[str]:
         if self._markets:
@@ -70,6 +109,66 @@ class MoonwellProtocol(BaseProtocol):
         except Exception as exc:
             logger.error("Moonwell get_markets error: %s", exc)
         return self._markets
+
+    async def _get_oracle_contract(self):
+        if self._oracle_contract is None:
+            try:
+                addr = await self.comptroller.functions.oracle().call()
+                self._oracle_contract = self.w3.eth.contract(
+                    address=AsyncWeb3.to_checksum_address(addr), abi=ORACLE_ABI
+                )
+            except Exception as exc:
+                logger.error("Moonwell: failed to fetch oracle address: %s", exc)
+        return self._oracle_contract
+
+    async def _compute_borrow_sum(self, address: str) -> int:
+        """
+        Return total borrow in USD * 1e18 units using Compound v2 oracle math:
+            sumBorrows = Σ (borrowBalanceStored_i * oraclePrice_i / 1e18)
+        where oraclePrice = getUnderlyingPrice(market) = price * 10^(36 - underlyingDecimals),
+        and borrowBalance is in underlying base units, giving a result in USD * 1e18.
+        """
+        markets = await self.comptroller.functions.getAssetsIn(address).call()
+        if not markets:
+            return 0
+        oracle = await self._get_oracle_contract()
+        if oracle is None:
+            return 0
+
+        borrow_balances = await asyncio.gather(
+            *[
+                self.w3.eth.contract(
+                    address=AsyncWeb3.to_checksum_address(m), abi=MTOKEN_ABI
+                ).functions.borrowBalanceStored(address).call()
+                for m in markets
+            ],
+            return_exceptions=True,
+        )
+
+        active = [
+            (m, bb)
+            for m, bb in zip(markets, borrow_balances)
+            if not isinstance(bb, Exception) and bb > 0
+        ]
+        if not active:
+            return 0
+
+        prices = await asyncio.gather(
+            *[
+                oracle.functions.getUnderlyingPrice(
+                    AsyncWeb3.to_checksum_address(m)
+                ).call()
+                for m, _ in active
+            ],
+            return_exceptions=True,
+        )
+
+        borrow_sum = 0
+        for (_, bb), price in zip(active, prices):
+            if isinstance(price, Exception) or price == 0:
+                continue
+            borrow_sum += price * bb // WEI
+        return borrow_sum
 
     async def get_borrowers(self) -> List[str]:
         try:
@@ -111,22 +210,48 @@ class MoonwellProtocol(BaseProtocol):
 
             if error != 0:
                 return None
-            if shortfall == 0:
+
+            if shortfall > 0:
+                shortfall_usd = shortfall / WEI
+                if shortfall_usd < config.MIN_POSITION_USD:
+                    return None
+                return LiquidatablePosition(
+                    protocol="Moonwell",
+                    chain=CHAIN,
+                    address=address,
+                    health_factor=999.0,  # shortfall > 0 means liquidatable
+                    collateral_usd=0.0,
+                    debt_usd=shortfall_usd,
+                    shortfall_usd=shortfall_usd,
+                    liquidation_bonus=LIQUIDATION_BONUS,
+                )
+
+            # Near-liquidation check: shortfall == 0 but HF may still be < alert threshold.
+            # Skip positions with a large safety buffer to avoid expensive oracle calls.
+            if liquidity / WEI > config.NEAR_LIQ_MAX_BUFFER_USD:
                 return None
-
-            shortfall_usd = shortfall / WEI
-
-            if shortfall_usd < config.MIN_POSITION_USD:
+            try:
+                borrow_sum = await self._compute_borrow_sum(address)
+            except Exception as exc:
+                logger.debug("Moonwell near_liq borrow_sum %s: %s", address, exc)
                 return None
-
+            if borrow_sum == 0:
+                return None
+            hf = 1.0 + liquidity / borrow_sum
+            if hf >= config.HF_ALERT_THRESHOLD:
+                return None
+            debt_usd = borrow_sum / WEI
+            if debt_usd < config.MIN_POSITION_USD:
+                return None
+            collateral_usd = (borrow_sum + liquidity) / WEI
             return LiquidatablePosition(
                 protocol="Moonwell",
                 chain=CHAIN,
                 address=address,
-                health_factor=999.0,  # shortfall > 0 means liquidatable
-                collateral_usd=0.0,
-                debt_usd=shortfall_usd,
-                shortfall_usd=shortfall_usd,
+                health_factor=round(hf, 6),
+                collateral_usd=collateral_usd,
+                debt_usd=debt_usd,
+                shortfall_usd=0.0,
                 liquidation_bonus=LIQUIDATION_BONUS,
             )
         except Exception as exc:
@@ -147,3 +272,4 @@ class MoonwellProtocol(BaseProtocol):
             "Moonwell: %d liquidatable out of %d borrowers", len(results), len(self._borrowers)
         )
         return results
+

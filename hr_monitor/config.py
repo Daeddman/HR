@@ -36,6 +36,20 @@ class Config:
     # Default: 2_000_000 blocks ≈ 70 days at 3 s/block.
     COLEND_MAX_BLOCKS_SCAN: int = int(os.getenv("COLEND_MAX_BLOCKS_SCAN", "2000000"))
 
+    # CoLend runs on Core DAO where typical positions are smaller than on Ethereum L1/L2.
+    # Use a lower minimum to avoid filtering out legitimate positions.
+    COLEND_MIN_POSITION_USD: float = float(os.getenv("COLEND_MIN_POSITION_USD", "100"))
+
+    # How many scan cycles to keep the borrower list before refreshing it from on-chain events.
+    # A refresh re-scans Borrow events so newly opened positions are detected.
+    # Lower values = fresher borrower list but more RPC calls.
+    BORROWER_REFRESH_CYCLES: int = int(os.getenv("BORROWER_REFRESH_CYCLES", "10"))
+
+    # Pre-filter for near-liquidation checks in Compound v2 forks (Venus / Moonwell).
+    # Positions whose USD liquidity buffer exceeds this value are skipped during the
+    # deep HF computation (avoids expensive per-market oracle calls for clearly safe positions).
+    NEAR_LIQ_MAX_BUFFER_USD: float = float(os.getenv("NEAR_LIQ_MAX_BUFFER_USD", "100000"))
+
     # Maximum block range per single eth_getLogs request (prevents 413 errors on public RPCs)
     LOG_CHUNK_SIZE: int = int(os.getenv("LOG_CHUNK_SIZE", "2000"))
 

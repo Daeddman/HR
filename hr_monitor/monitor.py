@@ -45,23 +45,27 @@ class MonitoringManager:
             ColendProtocol(self._core_w3),
         ]
 
-        # Deduplication: address -> last alert datetime (UTC)
+        # Deduplication: "address:protocol:chain" -> last alert datetime (UTC)
         self._last_alerted: Dict[str, datetime] = {}
 
         # Stats
         self.total_found: int = 0
         self.last_scan_time: datetime | None = None
         self.active_protocols: int = len(self._protocols)
+        self._scan_cycle: int = 0
 
-    def _is_cooldown_active(self, address: str) -> bool:
-        last = self._last_alerted.get(address)
+    def _cooldown_key(self, pos: LiquidatablePosition) -> str:
+        return f"{pos.address}:{pos.protocol}:{pos.chain}"
+
+    def _is_cooldown_active(self, pos: LiquidatablePosition) -> bool:
+        last = self._last_alerted.get(self._cooldown_key(pos))
         if last is None:
             return False
         delta = (datetime.now(timezone.utc) - last).total_seconds()
         return delta < config.ALERT_COOLDOWN_MINUTES * 60
 
-    def _record_alert(self, address: str) -> None:
-        self._last_alerted[address] = datetime.now(timezone.utc)
+    def _record_alert(self, pos: LiquidatablePosition) -> None:
+        self._last_alerted[self._cooldown_key(pos)] = datetime.now(timezone.utc)
 
     async def _scan_protocol(self, protocol) -> List[LiquidatablePosition]:
         try:
@@ -73,6 +77,15 @@ class MonitoringManager:
 
     async def scan_all(self) -> List[LiquidatablePosition]:
         """Scan all protocols in parallel and return new (non-cooldown) liquidatable positions."""
+        self._scan_cycle += 1
+        # Periodically reset the cached borrower list so new borrowers are picked up.
+        if self._scan_cycle % config.BORROWER_REFRESH_CYCLES == 0:
+            logger.info(
+                "Cycle %d: refreshing borrower lists for all protocols", self._scan_cycle
+            )
+            for p in self._protocols:
+                p.reset_borrowers()
+
         logger.info("Starting scan of %d protocols...", len(self._protocols))
         tasks = [self._scan_protocol(p) for p in self._protocols]
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -82,9 +95,9 @@ class MonitoringManager:
             if isinstance(batch, Exception):
                 continue
             for pos in batch:
-                if not self._is_cooldown_active(pos.address):
+                if not self._is_cooldown_active(pos):
                     new_positions.append(pos)
-                    self._record_alert(pos.address)
+                    self._record_alert(pos)
 
         self.total_found += len(new_positions)
         self.last_scan_time = datetime.now(timezone.utc)

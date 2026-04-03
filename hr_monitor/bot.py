@@ -26,6 +26,7 @@ EXPLORER_URLS = {
     "Arbitrum": "https://arbiscan.io/address/{}",
     "BSC": "https://bscscan.com/address/{}",
     "Base": "https://basescan.org/address/{}",
+    "Core": "https://scan.coredao.org/address/{}",
 }
 
 router = Router()
@@ -78,7 +79,8 @@ async def cmd_start(message: Message) -> None:
         "• Compound v3 (Arbitrum, Base)\n"
         "• Venus (BSC)\n"
         "• Seamless Protocol (Base)\n"
-        "• Moonwell (Base)\n\n"
+        "• Moonwell (Base)\n"
+        "• CoLend (Core DAO)\n\n"
         "<b>Команды:</b>\n"
         "/status — статус мониторинга\n"
         "/threshold — текущие пороги HF\n"

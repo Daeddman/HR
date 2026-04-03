@@ -88,7 +88,7 @@ class ColendProtocol(BaseProtocol):
             debt_usd = total_debt_base / BASE_CURRENCY_UNIT
             collateral_usd = total_collateral_base / BASE_CURRENCY_UNIT
 
-            if debt_usd < config.MIN_POSITION_USD:
+            if debt_usd < config.COLEND_MIN_POSITION_USD:
                 return None
 
             hf = health_factor_raw / WEI

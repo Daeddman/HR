@@ -14,6 +14,7 @@ from web3 import AsyncWeb3
 from hr_monitor.config import config
 from hr_monitor.protocols.base_protocol import BaseProtocol, LiquidatablePosition
 from hr_monitor.utils.logger import setup_logger
+from hr_monitor.utils.logs import get_logs_chunked
 
 logger = setup_logger(__name__)
 
@@ -34,6 +35,24 @@ POOL_ABI = [
     },
 ]
 
+# Chainlink ETH/USD feed on Arbitrum — returns answer scaled by 1e8
+CHAINLINK_ETH_USD_ADDRESS = "0x639Fe6ab55C921f74e7fac1ee960C0B6293ba612"
+CHAINLINK_ABI = [
+    {
+        "name": "latestRoundData",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [],
+        "outputs": [
+            {"name": "roundId", "type": "uint80"},
+            {"name": "answer", "type": "int256"},
+            {"name": "startedAt", "type": "uint256"},
+            {"name": "updatedAt", "type": "uint256"},
+            {"name": "answeredInRound", "type": "uint80"},
+        ],
+    }
+]
+
 # Borrow(address indexed reserve, address user, address indexed onBehalfOf,
 #        uint256 amount, uint8 interestRateMode, uint256 borrowRate, uint16 referralCode)
 BORROW_EVENT_SIG = "0xc6a898309e823ee50bac64e45ca8adba6690e99e7841c45d754e2a38e9019d9b"
@@ -44,9 +63,10 @@ EXPLORER = "https://arbiscan.io/address/{}"
 LIQUIDATION_BONUS = 5.0
 
 WEI = 10 ** 18
-# Radiant v2 (Aave v2 fork) returns collateral/debt in ETH units (1e18)
-# We approximate USD value from ETH; for HF monitoring we use the ratio
 ETH_UNIT = 10 ** 18
+
+# Refresh the ETH price every this many position-check calls (reduces oracle RPC traffic).
+_ETH_PRICE_REFRESH_EVERY = 50
 
 
 class RadiantProtocol(BaseProtocol):
@@ -54,25 +74,42 @@ class RadiantProtocol(BaseProtocol):
         self.w3 = w3
         self.pool_address = AsyncWeb3.to_checksum_address(POOL_ADDRESS)
         self.pool = self.w3.eth.contract(address=self.pool_address, abi=POOL_ABI)
+        self._chainlink = self.w3.eth.contract(
+            address=AsyncWeb3.to_checksum_address(CHAINLINK_ETH_USD_ADDRESS),
+            abi=CHAINLINK_ABI,
+        )
         self._borrowers: List[str] = []
         self._eth_price_usd: float = 0.0
+        self._price_call_count: int = 0
 
     async def _get_eth_price(self) -> float:
-        """Approximate ETH price via a simple fallback (use 3000 if unavailable)."""
-        # We keep a cached price to avoid extra calls on every check.
+        """Fetch ETH/USD price from Chainlink; fall back to cached value on error."""
+        self._price_call_count += 1
+        if self._eth_price_usd > 0 and self._price_call_count % _ETH_PRICE_REFRESH_EVERY != 0:
+            return self._eth_price_usd
+        try:
+            data = await self._chainlink.functions.latestRoundData().call()
+            # answer is int256 scaled by 1e8
+            price = data[1] / 10 ** 8
+            if price > 0:
+                self._eth_price_usd = price
+                logger.debug("Radiant: ETH/USD price updated to %.2f", price)
+        except Exception as exc:
+            logger.warning("Radiant: failed to fetch ETH price from Chainlink: %s", exc)
         return self._eth_price_usd if self._eth_price_usd > 0 else 3000.0
 
     async def get_borrowers(self) -> List[str]:
         try:
             latest = await self.w3.eth.block_number
             from_block = max(0, latest - config.MAX_BLOCKS_SCAN)
-            logs = await self.w3.eth.get_logs(
+            logs = await get_logs_chunked(
+                self.w3,
                 {
                     "address": self.pool_address,
                     "topics": [BORROW_EVENT_SIG],
                     "fromBlock": from_block,
                     "toBlock": latest,
-                }
+                },
             )
             borrowers: set = set()
             for log in logs:
@@ -131,3 +168,4 @@ class RadiantProtocol(BaseProtocol):
             "Radiant: %d liquidatable out of %d borrowers", len(results), len(self._borrowers)
         )
         return results
+

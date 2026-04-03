@@ -23,3 +23,8 @@ class BaseProtocol(ABC):
     @abstractmethod
     async def get_borrowers(self) -> List[str]:
         """Return list of known borrower addresses for this protocol."""
+
+    def reset_borrowers(self) -> None:
+        """Clear the cached borrower list so it is re-fetched on the next scan."""
+        if hasattr(self, "_borrowers"):
+            self._borrowers = []
