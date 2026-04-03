@@ -158,9 +158,14 @@ class RadiantProtocol(BaseProtocol):
         if not self._borrowers:
             await self.get_borrowers()
 
+        sem = asyncio.Semaphore(config.RPC_SEMAPHORE_SIZE)
+
+        async def _limited(addr: str):
+            async with sem:
+                return await self._check_position(addr)
+
         results: List[LiquidatablePosition] = []
-        tasks = [self._check_position(addr) for addr in self._borrowers]
-        checked = await asyncio.gather(*tasks, return_exceptions=True)
+        checked = await asyncio.gather(*[_limited(addr) for addr in self._borrowers], return_exceptions=True)
         for item in checked:
             if isinstance(item, LiquidatablePosition):
                 results.append(item)

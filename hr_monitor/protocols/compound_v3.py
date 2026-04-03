@@ -3,7 +3,7 @@ Compound v3 (Comet) protocol handler.
 
 Supports Arbitrum (USDC Comet) and Base (USDC Comet).
 Uses isLiquidatable() and getBorrowBalanceOf() to find liquidatable accounts.
-Borrower list is built from Supply/Withdraw/Borrow events (Transfer events on Comet).
+Borrower list is built from Supply and Withdraw events (Transfer events on Comet).
 """
 
 import asyncio
@@ -115,21 +115,33 @@ class CompoundV3Protocol(BaseProtocol):
         try:
             latest = await self.w3.eth.block_number
             from_block = max(0, latest - config.MAX_BLOCKS_SCAN)
-            # Collect addresses from Supply and Withdraw events
-            supply_logs = await get_logs_chunked(
-                self.w3,
-                {
-                    "address": self.comet_address,
-                    "topics": [SUPPLY_EVENT_SIG],
-                    "fromBlock": from_block,
-                    "toBlock": latest,
-                },
-            )
             borrowers: set = set()
-            for log in supply_logs:
-                if len(log["topics"]) >= 3:
-                    addr = "0x" + log["topics"][2].hex()[-40:]
-                    borrowers.add(AsyncWeb3.to_checksum_address(addr))
+
+            # Collect addresses from both Supply and Withdraw events so we catch
+            # accounts that may have gone underwater via collateral price drops
+            # without generating a new Supply event.
+            for event_sig in (SUPPLY_EVENT_SIG, WITHDRAW_EVENT_SIG):
+                try:
+                    logs = await get_logs_chunked(
+                        self.w3,
+                        {
+                            "address": self.comet_address,
+                            "topics": [event_sig],
+                            "fromBlock": from_block,
+                            "toBlock": latest,
+                        },
+                    )
+                    for log in logs:
+                        if len(log["topics"]) >= 3:
+                            addr = "0x" + log["topics"][2].hex()[-40:]
+                            borrowers.add(AsyncWeb3.to_checksum_address(addr))
+                except Exception as exc:
+                    logger.warning(
+                        "Compound v3 %s get_borrowers (sig %s) error: %s",
+                        self.chain_name,
+                        event_sig,
+                        exc,
+                    )
 
             self._borrowers = list(borrowers)
             logger.info(
@@ -177,9 +189,14 @@ class CompoundV3Protocol(BaseProtocol):
         if not self._borrowers:
             await self.get_borrowers()
 
+        sem = asyncio.Semaphore(config.RPC_SEMAPHORE_SIZE)
+
+        async def _limited(addr: str):
+            async with sem:
+                return await self._check_position(addr)
+
         results: List[LiquidatablePosition] = []
-        tasks = [self._check_position(addr) for addr in self._borrowers]
-        checked = await asyncio.gather(*tasks, return_exceptions=True)
+        checked = await asyncio.gather(*[_limited(addr) for addr in self._borrowers], return_exceptions=True)
         for item in checked:
             if isinstance(item, LiquidatablePosition):
                 results.append(item)

@@ -45,6 +45,14 @@ class Config:
     # Lower values = fresher borrower list but more RPC calls.
     BORROWER_REFRESH_CYCLES: int = int(os.getenv("BORROWER_REFRESH_CYCLES", "10"))
 
+    # Maximum number of concurrent RPC eth_call requests per protocol.
+    # Prevents overwhelming public RPC endpoints when checking hundreds of borrowers.
+    RPC_SEMAPHORE_SIZE: int = int(os.getenv("RPC_SEMAPHORE_SIZE", "20"))
+
+    # Path to JSON file used to persist cooldown state and runtime threshold overrides
+    # across restarts. An empty string disables persistence.
+    COOLDOWN_PERSIST_PATH: str = os.getenv("COOLDOWN_PERSIST_PATH", "cooldown_state.json")
+
     # Pre-filter for near-liquidation checks in Compound v2 forks (Venus / Moonwell).
     # Positions whose USD liquidity buffer exceeds this value are skipped during the
     # deep HF computation (avoids expensive per-market oracle calls for clearly safe positions).
