@@ -56,7 +56,7 @@ class ColendProtocol(BaseProtocol):
     async def get_borrowers(self) -> List[str]:
         try:
             latest = await self.w3.eth.block_number
-            from_block = max(0, latest - config.MAX_BLOCKS_SCAN)
+            from_block = max(0, latest - config.COLEND_MAX_BLOCKS_SCAN)
             logs = await get_logs_chunked(
                 self.w3,
                 {

@@ -31,6 +31,11 @@ class Config:
     # Maximum number of past blocks to scan for borrower events on startup
     MAX_BLOCKS_SCAN: int = int(os.getenv("MAX_BLOCKS_SCAN", "50000"))
 
+    # CoLend (Core DAO) uses ~3-second blocks, so 50k blocks ≈ 41 h.
+    # A larger window is needed to find borrowers who opened positions earlier.
+    # Default: 2_000_000 blocks ≈ 70 days at 3 s/block.
+    COLEND_MAX_BLOCKS_SCAN: int = int(os.getenv("COLEND_MAX_BLOCKS_SCAN", "2000000"))
+
     # Maximum block range per single eth_getLogs request (prevents 413 errors on public RPCs)
     LOG_CHUNK_SIZE: int = int(os.getenv("LOG_CHUNK_SIZE", "2000"))
 
